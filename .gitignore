@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Output directory (generated during parsing & evaluation)
+output/
+
+# RAG models cache
+rag_helper/models/
+
+# Internal research, drafts and dumps
+exp/
+paper-writing/
+*.dump
+*.tar
+*.zip
+

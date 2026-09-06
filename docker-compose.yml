@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  bank_statement_db:
+    image: postgres:15-alpine
+    container_name: bank_statement_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bank_statement_qa
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+
+volumes:
+  postgres_data:

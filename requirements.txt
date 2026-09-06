@@ -1,0 +1,40 @@
+# AI and ML libraries
+google.genai==1.10.0
+
+# Data processing
+openpyxl==3.1.5
+pandas==2.2.3
+numpy==1.26.3
+
+# Utilities
+python-dotenv==1.0.1
+jinja2==3.1.3
+
+# PDF and image processing
+PyMuPDF==1.25.5
+
+# Retry and async utilities
+tenacity==9.0.0
+
+# llama cloud services
+llama-parse==0.6.94
+
+# Additional dependencies that might be needed
+Pillow==11.1.0
+python-dateutil==2.9.0.post0
+dateparser==1.4.0
+tqdm==4.66.5
+
+# Database connection
+SQLAlchemy==2.0.28
+psycopg2-binary==2.9.9
+
+# Dependencies added for baseline RAG pipeline
+pdfplumber==0.11.4
+chonkie==0.2.6
+tiktoken==0.8.0
+faiss-cpu==1.9.0.post1
+sentence-transformers==3.3.1
+ir-measures==0.3.3
+nltk==3.9.1
+torch==2.5.1

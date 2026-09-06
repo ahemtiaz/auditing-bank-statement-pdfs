@@ -1,0 +1,262 @@
+[
+  {
+    "id": "001",
+    "question": "What are the earliest and latest transaction dates anywhere in the data?",
+    "ground_truth_sql": "SELECT min(date) AS earliest, max(date) AS latest FROM transactions",
+    "column_property": [
+      {
+        "earliest": {
+          "type": "date"
+        }
+      },
+      {
+        "latest": {
+          "type": "date"
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "earliest",
+      "latest"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "002",
+    "question": "How many transactions does each account have? List the bank, account and count.",
+    "ground_truth_sql": "SELECT bank_name, account_no, count(*) AS n FROM transactions GROUP BY bank_name, account_no ORDER BY n DESC, bank_name, account_no",
+    "column_property": [
+      {
+        "n": {
+          "type": "int"
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "n"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "003",
+    "question": "Top five transactions by amount.",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, greatest(coalesce(debit,0),coalesce(credit,0)) AS amount, CASE WHEN coalesce(credit,0)>0 THEN 'credit' ELSE 'debit' END AS direction FROM transactions ORDER BY amount DESC, bank_name, account_no, date LIMIT 5",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "direction": {
+          "type": "str",
+          "categories": [
+            "credit",
+            "debit"
+          ]
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "amount",
+      "direction"
+    ],
+    "order_matter_or_not": true
+  },
+  {
+    "id": "004",
+    "question": "Show all entries posted on the weekend (Friday or Saturday).",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, description, greatest(coalesce(debit,0),coalesce(credit,0)) AS amount, CASE WHEN coalesce(credit,0)>0 THEN 'credit' ELSE 'debit' END AS direction FROM transactions WHERE extract(dow from date) IN (5,6)",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "direction": {
+          "type": "str",
+          "categories": [
+            "credit",
+            "debit"
+          ]
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "description",
+      "amount",
+      "direction"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "005",
+    "question": "Identify entries posted on the last day of the month.",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, description, greatest(coalesce(debit,0),coalesce(credit,0)) AS amount, CASE WHEN coalesce(credit,0)>0 THEN 'credit' ELSE 'debit' END AS direction FROM transactions WHERE date = (date_trunc('month',date)+interval '1 month - 1 day')::date",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "direction": {
+          "type": "str",
+          "categories": [
+            "credit",
+            "debit"
+          ]
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "description",
+      "amount",
+      "direction"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "006",
+    "question": "Show entries posted near the financial year-end (between June 25 and July 5).",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, description, greatest(coalesce(debit,0),coalesce(credit,0)) AS amount, CASE WHEN coalesce(credit,0)>0 THEN 'credit' ELSE 'debit' END AS direction FROM transactions WHERE to_char(date,'MM-DD') BETWEEN '06-25' AND '07-05' ORDER BY date, bank_name, account_no",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "direction": {
+          "type": "str",
+          "categories": [
+            "credit",
+            "debit"
+          ]
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "description",
+      "amount",
+      "direction"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "007",
+    "question": "Find all credit transactions that were followed by a debit of the exact same amount on the same account, on the same or next calendar day.",
+    "ground_truth_sql": "SELECT a.bank_name, a.account_no, a.credit AS amount, a.date FROM transactions a JOIN transactions b ON a.bank_name=b.bank_name AND a.account_no=b.account_no AND a.credit=b.debit AND a.credit>0 AND b.date BETWEEN a.date AND a.date+1 ORDER BY amount DESC, a.account_no, a.date",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "amount",
+      "date"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "008",
+    "question": "List transactions whose value (settlement) date was backdated before the booking date, reporting the number of days they were backdated.",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, value_date, (date - value_date) AS days_backdated, greatest(coalesce(debit,0),coalesce(credit,0)) AS amount, CASE WHEN coalesce(credit,0)>0 THEN 'credit' ELSE 'debit' END AS direction FROM transactions WHERE value_date IS NOT NULL AND value_date < date ORDER BY days_backdated DESC",
+    "column_property": [
+      {
+        "days_backdated": {
+          "type": "int"
+        }
+      },
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "direction": {
+          "type": "str",
+          "categories": [
+            "credit",
+            "debit"
+          ]
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "value_date",
+      "days_backdated",
+      "amount",
+      "direction"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "009",
+    "question": "Detect possible structuring of cash deposits: cash deposits between 900,000 and 999,999 that sit just below the 1,000,000 reporting threshold.",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, description, credit AS amount FROM transactions WHERE credit BETWEEN 900000 AND 999999 AND search_text LIKE '%cash deposit%' ORDER BY amount DESC",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "description",
+      "amount"
+    ],
+    "order_matter_or_not": false
+  },
+  {
+    "id": "010",
+    "question": "Find exact duplicate debit transactions sharing the same account, date, amount and description.",
+    "ground_truth_sql": "SELECT bank_name, account_no, date, description, debit AS amount, count(*) AS occurrences FROM transactions WHERE debit > 0 GROUP BY bank_name, account_no, date, description, debit HAVING count(*) > 1 ORDER BY occurrences DESC, amount DESC",
+    "column_property": [
+      {
+        "amount": {
+          "type": "float"
+        }
+      },
+      {
+        "occurrences": {
+          "type": "int"
+        }
+      }
+    ],
+    "list_of_column_must_be_present": [
+      "bank_name",
+      "account_no",
+      "date",
+      "description",
+      "amount",
+      "occurrences"
+    ],
+    "order_matter_or_not": false
+  }
+]
