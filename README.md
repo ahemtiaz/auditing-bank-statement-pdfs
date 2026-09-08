@@ -50,6 +50,15 @@ graph TD
 
 ---
 
+## Data Statement & Privacy / PII Handling
+
+To prevent disclosure of proprietary client information while ensuring artifact reproducibility, the two sample statements in `data/bank-statements/` (`PUBALI BANK Mutated.pdf` for Tier 1 and `UTTARA BANK Mutated.pdf` for Tier 2) were sanitized under an exact mutation protocol:
+1. **Customer Identity Replacement**: Account holder names, business entities, and authorized signatory/operator names were replaced with synthetic dummy identities (e.g., *John Doe & Sons*, *Alexander Smith*). Account numbers, customer addresses, and telephone/mobile numbers were substituted with fictitious, valid-length dummy data. Public bank names and branch locations were retained.
+2. **Transaction Narration Masking**: Counterparty account numbers, physical cheque serials, and inter-bank electronic transfer tracking IDs (`IBFTIN-Tr#`) appearing within transaction narrations were masked with fixed repeating dummy digits (e.g., `99999999999`, `888888`).
+3. **Format & Arithmetic Fidelity**: Original transaction dates, debit/credit amounts, running balances, vector line geometries (Tier 1), and scanned OCR noise characteristics (Tier 2) were strictly preserved to ensure the files remain faithful benchmarks for PDF extraction and NL-to-SQL querying.
+
+---
+
 ## Prerequisites & Setup
 
 ### 1. System Requirements
