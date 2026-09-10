@@ -1,173 +1,216 @@
 # Auditing Bank Statement PDFs: A Multi-Tier Parser and Design Choices for the NL-to-SQL Query Layer Above It
 
-This repository contains the official implementation, evaluation datasets, and pipeline scripts associated with the paper accepted at **FinNLP 2026** (co-located with **EMNLP 2026**):
+Official repository for the paper accepted at **FinNLP 2026** (co-located with **EMNLP 2026**):
 > **"Auditing Bank Statement PDFs: A Multi-Tier Parser and Design Choices for the NL-to-SQL Query Layer Above It"**
 
 ---
 
 ## Overview
 
-Bank statements serve as the primary evidentiary record in financial auditing, yet they typically reach auditors as highly heterogeneous PDFs (some digitally typeset, others scanned) that require tedious manual transcription. This repository presents an end-to-end framework built and evaluated to automate this workflow. It consists of two primary components:
+Bank statements are the primary evidentiary record in financial auditing, yet they reach auditors as heterogeneous PDFs (some digitally typeset, others scanned) that require slow, error-prone manual transcription into spreadsheets. This repository implements an end-to-end system that automates this workflow in two stages:
 
-1. **Relational Data Conversion Pipeline**: A multi-tier extraction pipeline that ingests statement PDFs, determines whether page layouts are digital or scanned, extracts tables using a deterministic table extractor (**PyMuPDF**) or an OCR/layout parser (**LlamaParse**), standardizes heterogeneous headers to a canonical schema, and uses a balance equation reconciliation engine to locate and repair extraction errors.
-2. **Natural-Language-to-SQL Querying Layer**: A controlled evaluation testbed that studies how the placement of contextual information affects the accuracy of SQL agents. It evaluates five distinct context-injection strategies across multiple LLM generations (e.g., `gemini-2.5-flash` and `gemini-3.5-flash`) on complex auditing queries.
-
-### Ingestion & Evaluation Workflow
-
-```mermaid
-graph TD
-    A[Bank Statement PDF] --> B[Page Routing]
-    B -->|Digital Pages| C[PyMuPDF Table Extractor]
-    B -->|Scanned Pages| D[LlamaParse API]
-    C --> E[Canonical Schema Standardization]
-    D --> E
-    E --> F[Balance Equation Reconciliation Engine]
-    F --> G[(PostgreSQL Database)]
-    G --> H[NL-to-SQL Querying Layer]
-    H --> I[SQL Agent Evaluation / Interactive Query]
-```
+1. **Multi-Tier Parser (Stage 1)**: Converts statement PDFs into a validated relational database. It extracts document-level metadata via a vision-capable LLM, routes pages between a deterministic grid extractor (**PyMuPDF**) and an OCR/layout parser (**LlamaParse**), repairs extraction errors with a running-balance reconciliation engine, standardizes idiosyncratic headers into a canonical schema, and ingests transactions into PostgreSQL.
+2. **NL-to-SQL Query Layer (Stage 2)**: Evaluates five context-injection strategies across multiple LLM generations (`gemini-2.5-flash` and `gemini-3.5-flash-preview`) to execute complex financial audit queries against the database with execution-accuracy scoring.
 
 ---
 
-## Repository Structure & Outputs
+## Pipeline Architecture
 
-### Codebase Structure
-*   `data/`: Contains sample statements (`bank-statements/`) and evaluation dataset queries (`QA/dataset.json`).
-*   `parser/`: Logic for PDF routing, PyMuPDF table extraction, and LlamaParse integration.
-*   `sql_agent/`: SQL agent implementation including client wrappers, query generation, and self-correcting validation.
-*   `rag_helper/`: Retrievers and chunking tools for structured and unstructured context-augmented strategies.
-*   `utils/`: Database helpers, schema definitions, and validation utilities.
-*   `parse_statements.py`: Ingestion script to parse PDFs and populate the database.
-*   `bootstrap_*.py`: Setup scripts to generate RAG indexes and ground truths.
-*   `run_eval.py`: Evaluation harness for testing context-injection strategies.
-*   `run_query.py`: Interactive CLI to test individual natural language queries.
+```mermaid
+graph TD
+    A[Bank Statement PDF] --> B[Metadata Extraction: gemini-2.5-flash]
+    B --> C[Page Router]
+    C -->|Tabular Digital Pages with Grid Rulings| D[Tier 1: PyMuPDF Grid Extractor]
+    C -->|Scanned Pages or Complex / Borderless Digital Pages| E[Tier 2: LlamaParse OCR & Layout Engine]
+    D --> F[Multi-Page Wrapped Narration Concatenation]
+    E --> F
+    F --> G[Balance Equation Reconciliation Engine: Error Repair]
+    G --> H[Canonical Schema Standardization: column.py]
+    H --> I[Post-Processing & Null-Date Filtering]
+    I --> J[(PostgreSQL Database)]
+    J --> K[NL-to-SQL Query Layer: 5 Context-Injection Strategies]
+    K --> L[Execution-Accuracy Evaluation / Interactive CLI]
+```
 
-### Generated Outputs (`output/`)
-*   `output/parsing/`: Contains intermediate transaction tables parsed from PDF statement pages (under `custom_parser/`) and the generated corpus CSV chunks for Structured/Unstructured RAG.
-*   `output/qa/evaluation/ground_truth/`: Executed ground truth SQL results (Excel files) generated by `bootstrap_gt.py`.
-*   `output/qa/evaluation/<solution_name>/`: Evaluation run prediction logs (reasoning, generated SQL, output data) per question, along with the consolidated `evaluation_results.xlsx` sheet.
-*   `output/qa/run/<solution_name>/run_<timestamp>/`: Outputs from manual interactive query testing runs using `run_query.py`.
+### Key Ingestion Mechanics
+- **Page Routing**: Tier 1 (PyMuPDF) is applied exclusively to digital pages with clean ruling-line grids matching the expected column count. Pages without clear ruling lines, borderless tabular layouts, or scanned images fall back to Tier 2 (LlamaParse).
+- **Multi-Page Narration Stitching**: Continuation rows that wrap across page boundaries (rows with descriptive text but no numeric debit/credit/balance entries) are merged back into the preceding transaction.
+- **Balance Reconciliation Before Standardization**: Error recovery checks the running-balance identity ($\text{Balance}_t = \text{Balance}_{t-1} + \text{Deposit}_t - \text{Withdrawal}_t$) directly on the raw extracted columns. It detects and repairs OCR artifacts (sign inversions, decimal shifts, credit/debit column swaps) before mapping to canonical column names.
+- **Canonical Schema Standardization**: Maps bank-specific header variants (e.g., *Particulars*, *Narration*, *Dr Amount*, *Withdrawal*) into unified relational attributes using a regex matching library (`parser/column.py`).
+
+---
+
+## Released Artifacts vs. Research Benchmark
+
+| Component | Released in This Repository | Full Research Benchmark (Paper) |
+| :--- | :--- | :--- |
+| **Bank Statements** | **2 mutated sample statements** (`data/bank-statements/`) | 23 statements across 20 commercial banks (75 pages, 1,672 transactions) |
+| **Parsing Tiers** | `PUBALI BANK Mutated.pdf` (Tier 1), `UTTARA BANK Mutated.pdf` (Tier 2) | 11 statements (8 banks) in Tier 1; 12 statements (12 banks) in Tier 2 |
+| **Auditing Queries** | **10 sample queries** with gold SQL (`data/QA/dataset.json`) | 150 natural-language auditing questions with hand-authored gold SQL |
+| **Pipeline Code** | **Full implementation** (Parser, Reconciliation, RAG, SQL Agent, Eval) | Same |
+
+> **Confidentiality Note**: Full bank statements and the 150-query evaluation workload belong to an industry auditing partner and cannot be published. The two privacy-preserving mutated statements and 10 sample queries provide a fully functional, runnable testbed for the entire pipeline.
 
 ---
 
 ## Data Statement & Privacy / PII Handling
 
-To prevent disclosure of proprietary client information while ensuring artifact reproducibility, the two sample statements in `data/bank-statements/` (`PUBALI BANK Mutated.pdf` for Tier 1 and `UTTARA BANK Mutated.pdf` for Tier 2) were sanitized under an exact mutation protocol:
-1. **Customer Identity Replacement**: Account holder names, business entities, and authorized signatory/operator names were replaced with synthetic dummy identities (e.g., *John Doe & Sons*, *Alexander Smith*). Account numbers, customer addresses, and telephone/mobile numbers were substituted with fictitious, valid-length dummy data. Public bank names and branch locations were retained.
-2. **Transaction Narration Masking**: Counterparty account numbers, physical cheque serials, and inter-bank electronic transfer tracking IDs (`IBFTIN-Tr#`) appearing within transaction narrations were masked with fixed repeating dummy digits (e.g., `99999999999`, `888888`).
-3. **Format & Arithmetic Fidelity**: Original transaction dates, debit/credit amounts, running balances, vector line geometries (Tier 1), and scanned OCR noise characteristics (Tier 2) were strictly preserved to ensure the files remain faithful benchmarks for PDF extraction and NL-to-SQL querying.
+The two released sample statements were sanitized under an exact mutation protocol to protect client privacy while guaranteeing benchmark fidelity:
+
+1. **Customer Identity Replacement**: Account holder names, business entities, and signatory names were substituted with synthetic dummy identities (e.g., *John Doe & Sons*, *Alexander Smith*). Account numbers, customer street addresses, and telephone numbers were replaced with fictitious, valid-length data. Public bank and branch names were retained.
+2. **Transaction Narration Masking**: Counterparty account numbers, physical cheque serials, and inter-bank electronic tracking strings (`IBFTIN-Tr#`) within transaction narrations were masked with fixed repeating dummy digits (e.g., `99999999999`, `888888`).
+3. **Arithmetic & Layout Fidelity**: Original transaction dates, debit/credit amounts, running balances, vector line geometries (Tier 1), and scanned OCR noise characteristics (Tier 2) were strictly preserved so that table extraction, balance reconciliation, and SQL execution remain mathematically and empirically representative.
 
 ---
 
-## Prerequisites & Setup
+## Repository Structure
 
-### 1. System Requirements
+```
+├── data/
+│   ├── bank-statements/        # Released mutated PDF statements (Pubali Bank, Uttara Bank)
+│   └── QA/
+│       └── dataset.json        # Sample auditing query workload with gold SQL
+├── parser/
+│   ├── main.py                 # Multi-tier ingestion & balance reconciliation pipeline
+│   ├── column.py               # Canonical schema regex matcher & column definitions
+│   ├── prompts.py              # Vision & metadata prompts for Gemini and LlamaParse
+│   └── utils.py                # Table parsing & layout helpers
+├── rag_helper/
+│   ├── df_chunker.py           # Structured CSV-based chunking
+│   ├── text_chunker.py         # Unstructured text chunking
+│   ├── retriever.py            # SentenceTransformer & FAISS retriever wrappers
+│   └── pdf_parser.py           # pdfplumber baseline parser
+├── sql_agent/
+│   ├── agent.py                # SQLAgent orchestrator
+│   ├── query_generator.py      # LLM prompt construction & query generation
+│   ├── query_validator.py      # Self-correction loop & execution feedback
+│   └── llm_client.py           # Gemini API client wrapper with key rotation
+├── parse_statements.py         # Ingests PDF statements into PostgreSQL
+├── bootstrap_gt.py             # Executes gold SQL to generate ground truth result sets
+├── bootstrap_structured_rag.py   # Builds structured CSV chunk corpus and FAISS cache
+├── bootstrap_unstructured_rag.py # Builds unstructured raw-text chunk corpus
+├── run_eval.py                 # Evaluates context-injection strategies on the QA workload
+├── run_query.py                # CLI tool to test individual natural-language queries
+├── docker-compose.yml          # PostgreSQL database container configuration
+├── init_db.sql                 # Database table schema and trigram GIN indices
+└── requirements.txt            # Python dependencies
+```
+
+---
+
+## Setup & Quickstart
+
+### 1. Prerequisites
 - Python 3.10+
-- Docker & Docker Compose (for running the PostgreSQL database)
-- An active API key for **Google Gemini** (and optionally **Llama Cloud** if parsing scanned PDFs)
+- Docker & Docker Compose
+- API Keys:
+  - **Google Gemini API Key** (required for metadata extraction and SQL agent execution)
+  - **Llama Cloud API Key** (required for Tier 2 scanned statement parsing)
 
 ### 2. Environment Setup
-Clone the repository and set up a virtual environment:
-
 ```bash
-# Create virtual environment
-python -m venv venv
+# Clone the repository
+git clone https://github.com/ahemtiaz/auditing-bank-statement-pdfs.git
+cd auditing-bank-statement-pdfs
 
-# Activate virtual environment
-# On Windows (PowerShell):
+# Create and activate a virtual environment
+python -m venv venv
+# Windows (PowerShell):
 venv\Scripts\Activate.ps1
-# On Windows (CMD):
-venv\Scripts\activate.bat
-# On Unix/macOS:
+# Linux/macOS:
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 3. Spin up the Database
-Start the PostgreSQL database container (mapped to host port `5433` by default as specified in `docker-compose.yml`):
+### 3. Start the Database
+Start the PostgreSQL container (mapped to port `5433` by default):
 ```bash
 docker-compose up -d
 ```
 
 ### 4. Configure Environment Variables
-Copy `.env.example` to `.env` and populate your API keys:
+Copy `.env.example` to `.env` and provide your API keys:
 ```bash
 cp .env.example .env
 ```
-
-Open `.env` and set:
-- `GEMINI_API_KEYS`: A JSON array of your Gemini API keys (e.g. `["sk-yourkey1", "sk-yourkey2"]` or comma-separated list `key1,key2`).
-- `LLAMA_CLOUD_API_KEYS`: A JSON array of your Llama Cloud API keys (required if using scanned PDF parsing via LlamaParse).
-- `GEMINI_MODEL` (Optional): Specify the model to evaluate (defaults to `gemini-2.5-flash` in code if not set; can be configured to `gemini-3.5-flash`).
+Edit `.env`:
+```env
+GEMINI_API_KEYS=["your-gemini-api-key"]
+LLAMA_CLOUD_API_KEYS=["your-llama-cloud-key"]
+GEMINI_MODEL=gemini-2.5-flash
+```
 
 ---
 
 ## Running the Pipeline
 
-Follow these steps sequentially to ingest the sample statements, build the retrieval indices, and run evaluations:
-
 ### Step 1: Parse and Ingest Statement PDFs
-Run the parsing script to extract transactions from the PDF statements in `data/bank-statements/` and ingest them into the PostgreSQL database:
+Extracts transactions from `data/bank-statements/*.pdf`, executes reconciliation error repairs, maps columns to the canonical schema, and populates PostgreSQL:
 ```bash
 python parse_statements.py
 ```
+*Outputs: Parsed Excel workbooks and logs in `output/parsing/custom_parser/`.*
 
-### Step 2: Bootstrap Reference Data and Indices
-Execute the three bootstrapping scripts to establish the evaluation environment:
+### Step 2: Bootstrap Reference Data & RAG Indices
 ```bash
-# 1. Generate ground truth SQL results from dataset.json
+# 1. Execute gold SQL to create ground truth comparison targets
 python bootstrap_gt.py
 
-# 2. Generate structured RAG chunk indexes (CSV-based database chunking)
+# 2. Generate structured CSV chunks from the parsed database tables
 python bootstrap_structured_rag.py
 
-# 3. Generate unstructured RAG chunk indexes (raw page text chunking)
+# 3. Generate unstructured raw-text chunks from pdfplumber extractions
 python bootstrap_unstructured_rag.py
 ```
 
-### Step 3: Run Evaluation
-To evaluate SQL agent performance, run the evaluation script. By default, running without arguments will evaluate all five context-injection strategies sequentially:
+### Step 3: Run Evaluation Harness
+Run the evaluation harness over all 5 context-injection strategies sequentially:
 ```bash
-# Run evaluation across all 5 strategies
 python run_eval.py
 ```
-
-Alternatively, you can evaluate a specific strategy using the `--solution` flag:
+Or evaluate a single strategy:
 ```bash
-# Run evaluation for a specific strategy
 python run_eval.py --solution zero_context_sql
 ```
+*Results are written to `output/qa/evaluation/evaluation_results.xlsx`.*
 
-**Available Solutions:**
-*   `zero_context_sql`: Baseline zero-context prompt.
-*   `unstructured_rag_sql`: Prompts augmented with retrieved raw text pages.
-*   `structured_rag_sql`: Prompts augmented with retrieved structured table rows in CSV format.
-*   `self_correcting_sql`: Zero-context with a self-correction loop checking query syntax and execution output.
-*   `self_correcting_structured_rag_sql`: Combined strategy utilizing structured context and a self-correction loop.
+### Context-Injection Strategies
 
-Evaluation results are consolidated in `output/qa/evaluation/evaluation_results.xlsx`.
-
----
-
-## Testing Individual Queries
-
-To execute an individual query interactively and view the agent's reasoning, generated SQL, and database output:
-
-```bash
-# Run query with default (zero_context_sql) solution
-python run_query.py --question "Top five transactions by amount."
-```
-
-To run the query using a specific strategy, use the `--solution` flag:
-```bash
-python run_query.py --solution structured_rag_sql --question "Top five transactions by amount."
-```
+| Strategy Key | Validator Feedback Loop | Context Injected into Prompt | Retrieval Source |
+| :--- | :---: | :--- | :--- |
+| `zero_context_sql` | No | Schema only | — |
+| `unstructured_rag_sql` | No | Top-$k$ raw text chunks | `pdfplumber` page text |
+| `structured_rag_sql` | No | Top-$k$ CSV table rows | Parser-generated CSV |
+| `self_correcting_sql` | Yes | Error feedback loop | — |
+| `self_correcting_structured_rag_sql` | Yes | Top-$k$ CSV table rows + feedback | Parser-generated CSV |
 
 ---
 
-## Data & Privacy Note
+## Interactive Query CLI
 
-In accordance with confidentiality constraints regarding financial records from our industry partner, proprietary bank statements used in the main evaluation cannot be made public. This repository provides two privacy-preserving, mutated sample statements (`data/bank-statements/`) and a sample query dataset (`data/QA/dataset.json`) allowing full end-to-end execution and verification of the pipeline.
-
+Test ad-hoc natural-language questions against the ingested database and inspect the generated SQL and execution outputs:
+
+```bash
+python run_query.py --question "Show the top five transactions by debit amount."
+```
+
+To test with a specific strategy:
+```bash
+python run_query.py --solution structured_rag_sql --question "What was the closing balance on the final statement page?"
+```
+
+---
+
+## Citation
+
+```
+BibTeX citation will be added upon arXiv release / official proceedings publication.
+```
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
